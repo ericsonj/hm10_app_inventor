@@ -1,7 +1,7 @@
 /* Copyright 2018, Ericson Joseph
  * All rights reserved.
  *
- * This file is part sAPI library for microcontrollers.
+ * This file is part of sAPI Library.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,48 +28,129 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
  */
 
-/*
- * Date: 2018-07-22
- */
+/*==================[inlcusiones]============================================*/
 
-/*==================[inclusions]=============================================*/
+#include "sapi.h" // <= Biblioteca sAPI
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
-//#include "hm10_blink.h"   // <= own header (optional)
-#include "sapi.h"       // <= sAPI header
+/*==================[definiciones y macros]==================================*/
 
-/*==================[macros and definitions]=================================*/
+#define UART_PC UART_USB
+#define UART_BLUETOOTH UART_232
 
-/*==================[internal data declaration]==============================*/
+/*==================[definiciones de datos internos]=========================*/
 
-/*==================[internal functions declaration]=========================*/
+// MPU9250 Address
+// If MPU9250 AD0 pin is connected to GND
+MPU9250_address_t addr = MPU9250_ADDRESS_0;
 
-/*==================[internal data definition]===============================*/
+/*==================[definiciones de datos externos]=========================*/
 
-/*==================[external data definition]===============================*/
+/*==================[declaraciones de funciones internas]====================*/
 
-/*==================[internal functions definition]==========================*/
+/*==================[declaraciones de funciones externas]====================*/
 
-/*==================[external functions definition]==========================*/
+bool_t hm10bleTest(int32_t uart);
 
-/* FUNCION PRINCIPAL, PUNTO DE ENTRADA AL PROGRAMA LUEGO DE RESET. */
-int main(void){
+/*==================[funcion principal]======================================*/
 
-   /* ------------- INICIALIZACIONES ------------- */
+// FUNCION PRINCIPAL, PUNTO DE ENTRADA AL PROGRAMA LUEGO DE ENCENDIDO O RESET.
+int main(void) {
+    // ---------- CONFIGURACIONES ------------------------------
 
-   /* Inicializar la placa */
-   boardConfig();
+    // Inicializar y configurar la plataforma
+    boardConfig();
 
-   /* ------------- REPETIR POR SIEMPRE ------------- */
-   while(1) {
+    // Inicializar UART_USB para conectar a la PC
+    uartConfig(UART_PC, 115200);
+    uartWriteString(UART_PC, "UART_PC configurada.\r\n");
 
-   }
+    // Inicializar la IMU
+    printf("Inicializando IMU MPU9250...\r\n");
+    int8_t status;
+    status = mpu9250Init(addr);
 
-   /* NO DEBE LLEGAR NUNCA AQUI, debido a que a este programa no es llamado
-      por ningun S.O. */
-   return 0 ;
+    if (status < 0) {
+        printf("IMU MPU9250 no inicializado, chequee las conexiones:\r\n\r\n");
+        printf("MPU9250 ---- EDU-CIAA-NXP\r\n\r\n");
+        printf("    VCC ---- 3.3V\r\n");
+        printf("    GND ---- GND\r\n");
+        printf("    SCL ---- SCL\r\n");
+        printf("    SDA ---- SDA\r\n");
+        printf("    AD0 ---- GND\r\n\r\n");
+        printf("Se detiene el programa.\r\n");
+        while (1)
+            ;
+    }
+    printf("IMU MPU9250 inicializado correctamente.\r\n\r\n");
+
+    // Inicializar UART_232 para conectar al modulo bluetooth
+    uartConfig(UART_BLUETOOTH, 115200);
+    uartWriteString(UART_PC,
+                    "UART_BLUETOOTH para modulo Bluetooth configurada.\r\n");
+
+    uint8_t data = 0;
+
+    uartWriteString(UART_PC,
+                    "Testeto si el modulo esta conectado enviando: AT\r\n");
+    if (hm10bleTest(UART_BLUETOOTH)) {
+        uartWriteString(UART_PC, "Modulo conectado correctamente.\r\n");
+    }
+
+    // ---------- REPETIR POR SIEMPRE --------------------------
+    while (TRUE) {
+
+        // Leer el sensor y guardar en estructura de control
+
+        mpu9250Read();
+
+        char bufferSend[256];
+
+        float gyroX = mpu9250GetGyroX_rads();
+        float gyroY = mpu9250GetGyroY_rads();
+        float gyroZ = mpu9250GetGyroZ_rads();
+
+        // Imprimir resultados
+        sprintf(bufferSend, "Giroscopo:      (%f|f|%f)   [rad/s]\r\n",
+                          gyroX, gyroY, gyroZ); 
+        uartWriteString(UART_BLUETOOTH, bufferSend);
+
+        sprintf(bufferSend, "Acelerometro:   (%f|%f|%f)   [m/s2]\r\n",
+               mpu9250GetAccelX_mss(),
+               mpu9250GetAccelY_mss(),
+               mpu9250GetAccelZ_mss());
+        uartWriteString(UART_BLUETOOTH, bufferSend);
+        
+        sprintf(bufferSend, "Magnetometro:   (%f|%f|%f)   [uT]\r\n",
+               mpu9250GetMagX_uT(),
+               mpu9250GetMagY_uT(),
+               mpu9250GetMagZ_uT());
+        uartWriteString(UART_BLUETOOTH, bufferSend);
+        
+        sprintf(bufferSend, "Temperatura:    %f   [C]\r\n\r\n", mpu9250GetTemperature_C());
+        uartWriteString(UART_BLUETOOTH, bufferSend);
+        
+        delay(2000);
+    }
+
+    // NO DEBE LLEGAR NUNCA AQUI, debido a que a este programa se ejecuta
+    // directamenteno sobre un microcontroladore y no es llamado por ningun
+    // Sistema Operativo, como en el caso de un programa para PC.
+    return 0;
 }
 
-/*==================[end of file]============================================*/
+/*==================[definiciones de funciones internas]=====================*/
+
+/*==================[definiciones de funciones externas]=====================*/
+
+bool_t hm10bleTest(int32_t uart) {
+    uartWriteString(uart, "AT\r\n");
+    return waitForReceiveStringOrTimeoutBlocking(uart, "OK\r\n",
+                                                 strlen("OK\r\n"), 50);
+}
+
+/*==================[fin del archivo]========================================*/
